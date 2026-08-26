@@ -1,4 +1,4 @@
-"""Quant Research & Governance Agent — minimal, auditable agent kernel."""
+"""QuantLab Agent — lightweight, auditable quantitative research runtime."""
 from .agent import Agent
 from .config import Config
 from .llm import LLM, LLMResponse, ScriptedLLM, ToolCall

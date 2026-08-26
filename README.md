@@ -1,4 +1,4 @@
-# QuantLab Agent：量化研究执行与治理 Agent
+# QuantLab Agent
 
 > 一个**不依赖 Agent 框架**、由 Python 标准库和少量明确接口组成的 CLI Agent。它将自然语言研究需求转为可审计的研究步骤、工具调用、证据与结论。
 
@@ -71,14 +71,14 @@ cp .env.example .env  # 然后配置 OPENAI_API_KEY（请勿提交 .env）
 export OPENAI_API_KEY=sk-...
 
 # 启动一个任务
-quant-governance run -p "登记一个均值回归研究，补齐数据血缘和复现命令，然后说明所需治理证据。"
+quantlab run -p "登记一个均值回归研究，补齐数据血缘和复现命令，然后说明所需治理证据。"
 
 # 查询和重新运行（resume 会从原始 prompt 开始一次新运行，保留来源关系）
-quant-governance history
-quant-governance inspect run_20260825_120000_abcdef
-quant-governance resume run_20260825_120000_abcdef
+quantlab history
+quantlab inspect run_20260825_120000_abcdef
+quantlab resume run_20260825_120000_abcdef
 
-# 保持旧用法兼容
+# 兼容旧命令（可选）
 quant-governance -p "登记一个研究"
 
 pytest -q
