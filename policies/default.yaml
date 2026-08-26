@@ -1,0 +1,9 @@
+# Policy is deliberately human-readable. Runtime enforcement can be extended here.
+max_tool_rounds: 12
+python_timeout_seconds: 120
+allow_network: false
+allow_strategy_deployment: false
+required_backtest_metrics:
+  - sharpe
+  - max_drawdown
+  - turnover

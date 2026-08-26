@@ -1,0 +1,5 @@
+{"id":"successful-backtest-001","script_path":"evals/cases/successful_backtest/backtest.py","result_path":"evals/cases/successful_backtest/result.json","expected_status":"success"}
+{"id":"syntax-error-001","script_path":"evals/cases/syntax_error/backtest.py","result_path":"evals/cases/syntax_error/result.json","expected_status":"failed","expected_failure_category":"syntax_error"}
+{"id":"missing-data-001","script_path":"evals/cases/missing_data/backtest.py","result_path":"evals/cases/missing_data/result.json","expected_status":"failed","expected_failure_category":"data_or_schema_error"}
+{"id":"invalid-result-001","script_path":"evals/cases/invalid_result/backtest.py","result_path":"evals/cases/invalid_result/result.json","expected_status":"failed","expected_failure_category":"invalid_result"}
+{"id":"missing-result-001","script_path":"evals/cases/missing_result/backtest.py","result_path":"evals/cases/missing_result/result.json","expected_status":"failed","expected_failure_category":"missing_result"}

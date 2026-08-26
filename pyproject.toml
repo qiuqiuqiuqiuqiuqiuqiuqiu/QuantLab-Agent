@@ -12,9 +12,16 @@ dependencies = []
 
 [project.optional-dependencies]
 openai = ["openai>=1.0"]
+web = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]
 
 [project.scripts]
-quant-governance = "quant_governance_agent.cli:main"
+quant-governance = "quant_lab_agent.cli:main"
+quantlab-api = "quant_lab_agent.web.server:main"
 
 [tool.setuptools.packages.find]
-include = ["quant_governance_agent*"]
+include = ["quant_lab_agent*"]
+
+[tool.pytest.ini_options]
+# This repository also contains an independent CoreCoder checkout.  Keep this
+# project's default test command scoped to QuantLab's own suite.
+testpaths = ["tests"]

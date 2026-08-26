@@ -1,5 +1,5 @@
 from pathlib import Path
-from quant_governance_agent import Agent, LLMResponse, ScriptedLLM, ToolCall, default_tools
+from quant_lab_agent import Agent, LLMResponse, ScriptedLLM, ToolCall, default_tools
 
 def test_agent_executes_evidence_then_returns_answer(tmp_path: Path):
     llm = ScriptedLLM([
