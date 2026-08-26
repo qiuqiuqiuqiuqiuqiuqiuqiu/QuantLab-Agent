@@ -1,0 +1,9 @@
+.git
+.pytest_cache
+__pycache__
+*.py[cod]
+.quant-agent
+frontend/node_modules
+frontend/dist
+CoreCoder
+.env*
