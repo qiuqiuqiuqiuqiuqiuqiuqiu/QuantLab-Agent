@@ -10,3 +10,6 @@ frontend/dist/
 .env.production
 *.tsbuildinfo
 evals/cases/**/result.json
+
+.env
+.venv/

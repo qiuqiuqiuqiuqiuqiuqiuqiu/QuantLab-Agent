@@ -1,17 +1,4 @@
 import {useState} from 'react';
-import {api, setAccessToken} from './api';
+import {api,setAccessToken} from './api';
 import type {User} from './types';
-
-export default function Login({onLogin}: {onLogin: (user: User) => void}) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault(); setError(''); setLoading(true);
-    try { const result = await api.login(username, password); setAccessToken(result.access_token); onLogin(result.user); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : '登录失败'); }
-    finally { setLoading(false); }
-  };
-  return <main className="login-page"><form className="login-card" onSubmit={submit}><p className="eyebrow">QUANTLAB</p><h1>研究任务监控台</h1><p>主要通过 CLI 执行研究任务；此页面用于查看进度和结果。</p><label>用户名<input value={username} onChange={event => setUsername(event.target.value)} autoFocus required /></label><label>密码<input value={password} onChange={event => setPassword(event.target.value)} type="password" required /></label>{error && <p className="error">{error}</p>}<button disabled={loading}>{loading ? '登录中…' : '登录'}</button></form></main>;
-}
+export default function Login({onLogin,onDemo}:{onLogin:(user:User)=>void;onDemo:()=>void}){const [username,setUsername]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(false);const submit=async(e:React.FormEvent)=>{e.preventDefault();setLoading(true);setError('');try{const r=await api.login(username,password);setAccessToken(r.access_token);onLogin(r.user)}catch(x){setError(x instanceof Error?x.message:'Sign-in failed.')}finally{setLoading(false)}};return <main className="login-page"><div className="login-halo halo-one"/><div className="login-halo halo-two"/><form className="login-card" onSubmit={submit}><div className="brand"><span className="brand-mark">Q</span>QuantLab</div><p className="eyebrow">RESEARCH OPERATIONS</p><h1>Turn research into<br/>verifiable evidence.</h1><p className="login-copy">A local US-equity research agent for a small team. CLI executes the work; this workspace monitors, reviews and governs it.</p><label>Username<input value={username} onChange={e=>setUsername(e.target.value)} autoFocus placeholder="admin" required/></label><label>Password<input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="••••••••" required/></label>{error&&<p className="error">{error}</p>}<button className="primary login-submit" disabled={loading}>{loading?'Verifying…':'Enter workspace'}<span>→</span></button><button type="button" className="demo-link" onClick={onDemo}>Explore mock product data <span>↗</span></button><p className="login-footnote">Internal research only. No automated trading.</p></form></main>}

@@ -10,7 +10,7 @@ from .tools import default_tools
 
 def build_agent(config: Config) -> Agent:
     if not config.api_key:
-        raise RuntimeError("Set QUANT_AGENT_API_KEY or OPENAI_API_KEY before starting a run")
+        raise RuntimeError("Set OPENROUTER_API_KEY (recommended) or QUANT_AGENT_API_KEY / OPENAI_API_KEY before starting a run")
     return Agent(
         LLM(config.model, config.api_key, config.base_url, max_tokens=config.max_tokens),
         default_tools(config.workspace), config.workspace, config.audit_log,

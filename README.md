@@ -67,8 +67,9 @@ examples/research_task.txt
 
 ```bash
 python3 -m pip install -e '.[openai]'
-cp .env.example .env  # 然后配置 OPENAI_API_KEY（请勿提交 .env）
-export OPENAI_API_KEY=sk-...
+cp .env.example .env  # 配置 OPENROUTER_API_KEY（请勿提交 .env）
+export OPENROUTER_API_KEY=sk-or-v1-...
+export QUANT_AGENT_MODEL=~openai/gpt-latest
 
 # 启动一个任务
 quantlab run -p "登记一个均值回归研究，补齐数据血缘和复现命令，然后说明所需治理证据。"
@@ -145,7 +146,8 @@ python3 -m pytest tests -q
 ```bash
 # 终端 1：启动 Python API
 python3 -m pip install -e '.[openai,web]'
-export OPENAI_API_KEY=sk-...
+export OPENROUTER_API_KEY=sk-or-v1-...
+export QUANT_AGENT_MODEL=~openai/gpt-latest
 quantlab-api
 
 # 终端 2：启动前端（需要 Node.js 20.19+ 或 22.12+）

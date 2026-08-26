@@ -12,7 +12,7 @@ from .tools import default_tools
 
 def _build_agent(config: Config) -> Agent:
     if not config.api_key:
-        raise ValueError("Set QUANT_AGENT_API_KEY or OPENAI_API_KEY")
+        raise ValueError("Set OPENROUTER_API_KEY (recommended) or QUANT_AGENT_API_KEY / OPENAI_API_KEY")
     return Agent(
         LLM(config.model, config.api_key, config.base_url, max_tokens=config.max_tokens),
         default_tools(config.workspace), config.workspace, config.audit_log,
