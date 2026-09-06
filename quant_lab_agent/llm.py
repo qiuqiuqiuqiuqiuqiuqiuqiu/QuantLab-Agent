@@ -2,6 +2,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 import json
+import random
+import time
 
 @dataclass
 class ToolCall:
@@ -39,16 +41,35 @@ class ScriptedLLM:
 
 class LLM:
     """OpenAI-compatible non-streaming adapter; install with ``[openai]``."""
-    def __init__(self, model: str, api_key: str, base_url: str | None = None, **kwargs):
+    def __init__(self, model: str, api_key: str, base_url: str | None = None, max_retries: int = 3, **kwargs):
         try:
             from openai import OpenAI
         except ImportError as exc:
             raise RuntimeError("Install optional dependency: pip install '.[openai]'") from exc
         self.model, self.client, self.extra = model, OpenAI(api_key=api_key, base_url=base_url), kwargs
+        self.max_retries = max(0, max_retries)
         self.total_prompt_tokens = self.total_completion_tokens = 0
 
     def chat(self, messages, tools=None, on_token=None) -> LLMResponse:
-        result = self.client.chat.completions.create(model=self.model, messages=messages, tools=tools or None, **self.extra)
+        result = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                result = self.client.chat.completions.create(model=self.model, messages=messages, tools=tools or None, **self.extra)
+                break
+            except Exception as exc:
+                status = getattr(exc, "status_code", None)
+                details = f"{getattr(exc, 'code', '')} {getattr(exc, 'type', '')} {exc}".lower()
+                # HTTP 429 can mean temporary rate limiting or a permanent billing
+                # problem. Retrying an exhausted account only wastes time and masks
+                # the user action required, so classify it before applying backoff.
+                terminal_provider_error = any(marker in details for marker in (
+                    "insufficient_quota", "billing", "payment_required", "invalid_api_key", "authentication",
+                ))
+                retryable = not terminal_provider_error and (status in {408, 409, 429, 500, 502, 503, 504} or isinstance(exc, (TimeoutError, ConnectionError)))
+                if not retryable or attempt >= self.max_retries:
+                    raise
+                time.sleep(min(4.0, 0.5 * (2 ** attempt)) + random.random() * 0.15)
+        assert result is not None
         msg = result.choices[0].message
         calls = [ToolCall(c.id, c.function.name, json.loads(c.function.arguments or "{}")) for c in (msg.tool_calls or [])]
         usage = result.usage

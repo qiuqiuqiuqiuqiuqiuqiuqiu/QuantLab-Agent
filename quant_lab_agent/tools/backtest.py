@@ -6,6 +6,7 @@ handling untrusted strategy code must use containers/VMs with network isolation.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import os
 import subprocess
@@ -33,7 +34,7 @@ class RunBacktestTool(WorkspacePathMixin, Tool):
         super().__init__(workspace)
         self.default_timeout_seconds = default_timeout_seconds
 
-    def execute(self, script_path: str, result_path: str, timeout_seconds: int | None = None) -> str:
+    def execute(self, script_path: str, result_path: str, timeout_seconds: int | None = None, environment: dict[str, str] | None = None) -> str:
         try:
             script = self.resolve_path(script_path)
             result = self.resolve_path(result_path)
@@ -48,6 +49,11 @@ class RunBacktestTool(WorkspacePathMixin, Tool):
             result.unlink()
         timeout = min(timeout_seconds or self.default_timeout_seconds, 300)
         try:
+            safe_env = {"PATH": os.environ.get("PATH", ""), "PYTHONIOENCODING": "utf-8"}
+            if environment:
+                # This optional channel is reserved for trusted server-side jobs. The
+                # public tool schema intentionally does not expose arbitrary env vars.
+                safe_env.update({key: value for key, value in environment.items() if key in {"QUANTLAB_JOB_FILE", "QUANTLAB_RESULT_FILE"}})
             completed = subprocess.run(
                 [sys.executable, "-I", str(script)],
                 cwd=self.workspace,
@@ -56,7 +62,7 @@ class RunBacktestTool(WorkspacePathMixin, Tool):
                 text=True,
                 timeout=timeout,
                 # Keep invocation deterministic and avoid inheriting credentials.
-                env={"PATH": os.environ.get("PATH", ""), "PYTHONIOENCODING": "utf-8"},
+                env=safe_env,
             )
         except subprocess.TimeoutExpired as exc:
             return self._failure("timeout", f"Backtest exceeded {timeout}s", stdout=exc.stdout, stderr=exc.stderr)
@@ -87,9 +93,10 @@ class RunBacktestTool(WorkspacePathMixin, Tool):
         artifacts = self._extract_artifacts(payload)
         if isinstance(artifacts, str):
             return self._failure("invalid_result", artifacts, stdout=completed.stdout)
+        artifact_sha256 = hashlib.sha256(result.read_bytes()).hexdigest()
         return json.dumps({
             "status": "success", "script_path": script_path, "result_path": result_path,
-            "metrics": metrics, "artifacts": artifacts, "stdout": self._clip(completed.stdout),
+            "metrics": metrics, "artifacts": artifacts, "artifact_sha256": artifact_sha256, "stdout": self._clip(completed.stdout),
             "next_action": "Use record_backtest to persist these metrics, then validate_research.",
         }, ensure_ascii=False)
 

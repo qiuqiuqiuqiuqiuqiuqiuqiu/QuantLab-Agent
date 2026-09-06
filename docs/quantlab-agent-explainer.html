@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QuantLab Agent · 项目讲解</title>
+<style>
+:root{--ink:#17231d;--muted:#65746b;--green:#168255;--lime:#dff7e8;--line:#dce6df;--paper:#f7faf8;--amber:#a85f10}*{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.7}.wrap{max-width:1120px;margin:auto;padding:34px 24px 80px}.hero{color:white;background:radial-gradient(circle at 82% 25%,#3c8f6c,transparent 28%),linear-gradient(130deg,#10291e,#1b5138);border-radius:24px;padding:54px;overflow:hidden}.eyebrow{letter-spacing:.12em;font-size:12px;font-weight:800;color:#71e6a9}.hero h1{font-size:44px;line-height:1.16;margin:12px 0}.hero p{max-width:670px;color:#d6e7dc;font-size:18px}.pill{display:inline-block;margin-top:12px;padding:6px 11px;border:1px solid #629e80;border-radius:99px;color:#bff4d5;font-size:12px;font-weight:700}h2{font-size:26px;margin:52px 0 12px}h3{margin:4px 0 8px;font-size:18px}.lead{color:var(--muted);font-size:17px;max-width:800px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:20px}.card{background:white;border:1px solid var(--line);border-radius:16px;padding:21px}.card p{color:var(--muted);margin:0}.n{font:800 12px ui-monospace,SFMono-Regular,monospace;color:var(--green)}.flow{display:flex;align-items:stretch;gap:8px;margin:20px 0;overflow:auto}.step{flex:1;min-width:145px;padding:16px;background:white;border:1px solid var(--line);border-radius:13px;font-weight:700;text-align:center}.arrow{align-self:center;color:var(--green);font-size:24px}.code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;background:#10281e;color:#d9f7e5;border-radius:15px;padding:22px;line-height:1.65}.two{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}.note{background:#fff8ec;border-left:4px solid #e5a445;padding:16px 18px;border-radius:0 12px 12px 0;color:#6b4c22}.table{width:100%;border-collapse:collapse;background:white;border:1px solid var(--line);border-radius:14px;overflow:hidden}.table th,.table td{padding:13px 15px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}.table th{background:#edf6f0;font-size:13px}.table tr:last-child td{border:0}.tag{display:inline-block;padding:3px 8px;border-radius:99px;background:var(--lime);color:#17643f;font-size:12px;font-weight:700}.footer{margin-top:56px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:20px}@media(max-width:760px){.wrap{padding:16px}.hero{padding:32px 25px}.hero h1{font-size:34px}.grid,.two{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.flow{flex-direction:column}.step{min-width:0}}
+</style>
+</head>
+<body><main class="wrap">
+<section class="hero"><div class="eyebrow">LOCAL · US EQUITIES · EVIDENCE-FIRST</div><h1>QuantLab Agent<br>本地量化研究工作台</h1><p>一个帮助团队把“我想研究某只股票、策略或统计预测情景”变成可计算、可复现、可追溯实验的 Agent 系统。</p><span class="pill">研究辅助，不自动交易，不构成投资建议</span></section>
+
+<h2>用一句话说清楚</h2><p class="lead">你提出问题、选择研究模板或上传数据；QuantLab Agent 负责安排研究步骤、调用受控工具、运行计算、生成图表，并保存完整的证据链。它不是聊天式股票推荐器，而是一个本地的研究流程管理系统。</p>
+
+<h2>它实际能做什么？</h2><section class="grid"><article class="card"><div class="n">01 · PROJECT</div><h3>创建研究项目</h3><p>例如创建“AI Semiconductor Research”，保存研究假设、股票池和基准。</p></article><article class="card"><div class="n">02 · EXPERIMENT</div><h3>连续做多个实验</h3><p>在同一项目下做 NVDA 单股体检、NVDA/AMD/MSFT 对比和策略测试。</p></article><article class="card"><div class="n">03 · EVIDENCE</div><h3>保存可验证结果</h3><p>保留数据来源、参数、工具调用、回测指标、曲线和最终状态。</p></article></section>
+
+<h2>一个简单例子</h2><p class="lead">假设你想研究 AI 半导体板块，而不是只问“英伟达能买吗”。</p><div class="flow"><div class="step">创建项目<br><small>AI Semiconductor Research</small></div><div class="arrow">→</div><div class="step">定义股票池<br><small>NVDA · AMD · MSFT</small></div><div class="arrow">→</div><div class="step">运行比较实验<br><small>收益 / 风险 / 回撤</small></div><div class="arrow">→</div><div class="step">查看证据与结论<br><small>图表 / 指标 / 记录</small></div></div><p class="note">目前引导模板使用的是<strong>明确标记的本地合成演示数据</strong>，用于展示工作流。要得到真实市场结论，必须替换为上传的或授权的数据源。</p>
+
+<h2>系统架构</h2><pre class="code">用户（Web / CLI）
+        │
+        ▼
+FastAPI Service / CLI Command
+        │
+        ▼
+自研 Agent Loop：模型规划 → 工具执行 → 结果观察 → 下一轮或停止
+        │
+        ├── 市场数据快照、研究登记与数据血缘工具
+        ├── 受控策略模板、统计预测与受限 Python 回测 Runner
+        ├── 指标与结果 JSON 校验
+        └── 治理与人工复核工具
+        │
+        ▼
+本地工作区：Projects · Runs · Events · Uploaded Assets · Artifacts</pre>
+
+<h2>Agent 是怎样工作的？</h2><section class="two"><article class="card"><h3>模型只负责“想下一步”</h3><p>模型理解用户需求，选择已定义的工具，并根据工具返回的真实结果决定下一步。它不直接计算 Sharpe，也不直接执行系统命令。</p></article><article class="card"><h3>程序工具负责“做事实”</h3><p>Python 工具读取数据、运行回测、校验 JSON 指标、写入研究记录。没有成功工件，就不能把结论称为已验证结果。</p></article></section>
+
+<h2>核心模块</h2><table class="table"><thead><tr><th>模块</th><th>作用</th><th>关键价值</th></tr></thead><tbody>
+<tr><td><code>agent.py</code></td><td>自研、有最大轮次限制的 Agent Loop</td><td>避免无限思考和无限工具调用</td></tr>
+<tr><td><code>llm.py</code></td><td>OpenRouter / OpenAI 兼容模型适配层</td><td>模型供应商可替换，Loop 不绑定 SDK</td></tr>
+<tr><td><code>tools/market_data.py</code></td><td>受控美股数据获取与 OHLCV 校验</td><td>公司名/代码到带血缘的本地数据快照</td></tr>
+<tr><td><code>tools/strategy_template.py</code></td><td>策略规格编译器</td><td>只允许白名单规则，不执行任意 LLM 代码</td></tr>
+<tr><td><code>tools/forecast.py</code></td><td>统计预测情景工具</td><td>概率、区间、样本外诊断与明确限制</td></tr>
+<tr><td><code>tools/backtest.py</code></td><td>受限 Python 回测 Runner</td><td>无 Shell、路径限制、超时和结果 Schema 校验</td></tr>
+<tr><td><code>tools/research.py</code></td><td>研究假设、数据血缘和回测证据</td><td>把研究从文字回答变为结构化资产</td></tr>
+<tr><td><code>runtime/run_store.py</code></td><td>Run 状态和事件持久化</td><td>每个实验都有可追溯执行记录</td></tr>
+<tr><td><code>runtime/project_store.py</code></td><td>Research Project 注册表</td><td>一个项目可容纳多个相关实验</td></tr>
+<tr><td><code>web/api.py</code></td><td>FastAPI、上传、项目、实验与权限接口</td><td>连接前端、Agent Runtime 和本地数据</td></tr>
+</tbody></table>
+
+<h2>为什么不让 Agent 无限自动修复？</h2><p class="lead">真实开发中，最危险的是“回测失败后模型无限改代码、无限重跑”。QuantLab 给 Agent 设置预算和停止条件。</p><div class="grid"><article class="card"><span class="tag">最大轮次</span><p>超过总轮次，任务自动停止并要求人工复核。</p></article><article class="card"><span class="tag">重跑预算</span><p>同一回测脚本只有有限修复与重跑机会。</p></article><article class="card"><span class="tag">失败分类</span><p>区分语法、数据、依赖、超时和结果文件问题。</p></article></div>
+
+<h2>项目的安全与治理边界</h2><section class="two"><div><h3>已经实现</h3><ul><li>工作目录边界；</li><li>无 Shell 的 Python 进程调用；</li><li>超时和结果工件校验；</li><li>工具输入输出与最终状态落盘；</li><li>缺数据时停止，不编造量化指标；</li><li>不接交易权限，不自动下单。</li></ul></div><div><h3>真实生产下一步</h3><ul><li>将回测移入一次性容器或隔离 Worker；</li><li>只读数据挂载、无网络、CPU/内存限制；</li><li>真实行情数据版本管理与复权检查；</li><li>实验矩阵、参数扫描和项目级结果比较。</li></ul></div></section>
+
+<h2>项目定位</h2><p class="lead"><strong>QuantLab Agent 是一个本地 Quant Research OS 原型。</strong>它既支持历史分析、受控策略回测，也支持明确标注为不确定性的统计预测情景；重点始终是受控、可审计、可停止、可复现的 Agent 研究执行系统，而不是股票推荐或自动交易。</p>
+<!-- LATEST_RUNTIME_UPDATE:START --><style>
+.latest-runtime-update{margin:42px 0 24px;padding:24px 26px;border:1px solid #9bd8ad;border-radius:14px;background:linear-gradient(135deg,#f1fbf4,#f8fcf8);color:#193324}.latest-runtime-update h2{margin:0 0 10px;color:#123f25}.latest-runtime-update p,.latest-runtime-update li{line-height:1.75}.latest-runtime-update code{background:#e0f3e5;padding:2px 5px;border-radius:4px}.latest-runtime-update .release{font:700 11px ui-monospace,monospace;letter-spacing:.08em;color:#187042}.latest-runtime-update .flow{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0}.latest-runtime-update .flow span{padding:7px 9px;border-radius:7px;background:white;border:1px solid #cce6d2;font-size:13px}.latest-runtime-update .warn{padding:10px 12px;background:#fff7e8;border-left:3px solid #cf932c;border-radius:5px}</style><section class="latest-runtime-update"><h2>最新运行时能力：真实数据、受控策略与预测情景</h2><p class="release">CODE UPDATE · 2026-08-27</p><p>最新代码增加 <code>fetch_us_market_data</code>、<code>create_strategy_template</code> 与 <code>forecast_market_direction</code>。用户可输入 <code>英伟达</code>、<code>NVIDIA</code> 或 <code>NVDA</code>；LLM 决定下一步，但固定工具负责名称解析、市场数据快照、数据校验、策略编译、回测和预测诊断。</p><div class="flow"><span>自然语言任务</span><span>→ 行情快照</span><span>→ 数据校验</span><span>→ 策略 / 预测</span><span>→ 受限计算</span><span>→ 证据/治理</span></div><ul><li><code>tools/market_data.py</code>：经固定 Alpha Vantage 适配器获取 OHLCV，校验日期、必填字段、重复日期、价格高低关系和成交量；保存 CSV、lineage JSON、SHA-256。Key 不进入 LLM 上下文。</li><li><code>tools/strategy_template.py</code>：只允许 <code>buy_and_hold</code>、<code>moving_average</code>、<code>mean_reversion</code> 三种策略；校验窗口、z-score、成本和 CSV 列后，生成可审阅的策略规格与标准库脚本。</li><li><code>tools/forecast.py</code>：使用可解释的 AR(1) 历史收益率情景模型，输出上涨概率、统计区间，以及滚动样本外方向准确率和 Brier score；预测 Artifact 含数据 SHA-256 与限制说明。</li><li>策略脚本保存到 <code>backtests/generated/</code>，规则保存到 <code>.quant-agent/strategy-specs/</code>，回测和预测结果保存到 <code>artifacts/</code>；<code>run_backtest</code> 仍负责无 Shell 执行、超时、JSON Schema 与 SHA-256 校验。</li></ul><div class="warn">“分析近三年走势”不等于策略回测或预测。“上涨概率”只是历史模型产生的统计情景，不是必然价格、买卖建议或自动交易依据。复权、幸存者偏差、流动性和样本外验证仍需额外研究。</div></section><!-- LATEST_RUNTIME_UPDATE:END --><p class="footer">文档由 QuantLab Agent 项目当前实现整理。建议在面试中同时演示：创建项目 → 运行实验 → 查看 Agent Trace → 查看回测工件与治理状态。</p>
+</main></body></html>

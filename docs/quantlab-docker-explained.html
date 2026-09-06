@@ -1,0 +1,70 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QuantLab · Docker 讲解</title><style>:root{--ink:#17231d;--muted:#627269;--green:#148154;--line:#dce6df;--bg:#f7faf8}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}.w{max-width:1060px;margin:auto;padding:32px 22px 70px}.hero{padding:47px;border-radius:22px;background:radial-gradient(circle at 84% 20%,#438769,transparent 25%),linear-gradient(135deg,#102a1e,#286749);color:#fff}.hero small,.n{color:#8bedb8;font-weight:800;letter-spacing:.12em}.hero h1{font-size:40px;line-height:1.2;margin:8px 0}.hero p{max-width:750px;color:#d7e9dd;font-size:18px}h2{font-size:27px;margin:52px 0 10px}.lead{color:var(--muted);font-size:17px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{background:#fff;border:1px solid var(--line);border-radius:15px;padding:20px}.card h3{font-size:18px;margin:6px 0}.card p{margin:0;color:var(--muted);font-size:14px}.diagram,pre{background:#102a1e;color:#dff8e9;border-radius:14px;padding:22px;overflow:auto;font:13px/1.68 ui-monospace,SFMono-Regular,Menlo,monospace}.flow{border-left:3px solid #80ca9e;padding-left:22px}.flow div{position:relative;background:#fff;border:1px solid var(--line);border-radius:11px;padding:14px 16px;margin:14px 0}.flow div:before{content:"";position:absolute;left:-30px;top:20px;width:11px;height:11px;background:var(--green);border-radius:50%}.tag{display:inline-block;background:#e2f6e9;color:#176b47;border-radius:99px;padding:3px 8px;font-size:11px;font-weight:800}.safe{padding:17px 19px;background:#e7f7ed;border-left:4px solid var(--green);border-radius:0 12px 12px 0}.warn{padding:17px 19px;background:#fff5e7;border-left:4px solid #dc9a35;border-radius:0 12px 12px 0}.table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}.table th,.table td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}.table th{background:#edf6f0;font-size:13px}.table tr:last-child td{border:0}code{background:#eaf3ed;border-radius:4px;padding:2px 5px;font:12px ui-monospace,monospace}.footer{margin-top:48px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:18px}@media(max-width:700px){.w{padding:15px}.hero{padding:31px 24px}.hero h1{font-size:31px}.grid{grid-template-columns:1fr}}</style></head><body><main class="w"><section class="hero"><small>DOCKER · QUANTLAB DEPLOYMENT</small><h1>Docker 是什么？<br>QuantLab 如何使用 Docker？</h1><p>根据项目中的 <code>Dockerfile</code> 与 <code>docker-compose.yml</code> 整理，帮助你理解“项目已经配置了 Docker”与“镜像已构建并运行”之间的区别。</p></section>
+<h2>1. 你的项目已经被 Docker 封装了吗？</h2><div class="safe"><strong>准确答案：</strong>项目<strong>已经具备 Docker 封装配置</strong>，因为根目录中已有 <code>Dockerfile</code>、<code>docker-compose.yml</code> 与 <code>.env.production.example</code>。但是，只有运行 <code>docker compose up --build -d</code> 后，镜像才会在你的电脑上真正构建，容器才会真正运行。</div><p class="lead">可以理解为：你已经写好了“做菜说明书”和“开店配置”，但是否已经做出菜、是否已经开店，要看你有没有执行构建和启动命令。</p>
+
+<h2>2. Docker 到底是什么？</h2><p class="lead">Docker 是一种把应用和运行它所需环境一起打包的工具。它让程序在不同电脑上尽量以同样方式运行。</p><div class="diagram">没有 Docker：
+同事电脑 → 安装 Python → 创建 venv → 安装依赖 → 安装 Node → npm install
+         → 匹配版本 → 配置环境变量 → 启动前后端
+
+有 Docker：
+同事电脑 → 安装 Docker Desktop → 配置 .env.production → docker compose up --build -d</div>
+<section class="grid"><article class="card"><div class="n">IMAGE</div><h3>镜像 Image</h3><p>像应用的“安装包/模板”。里面包含系统基础、Python、依赖、前端构建产物和项目代码。</p></article><article class="card"><div class="n">CONTAINER</div><h3>容器 Container</h3><p>镜像真正启动后的运行实例。可以把它理解成“正在运行的 QuantLab”。</p></article><article class="card"><div class="n">VOLUME</div><h3>数据卷 Volume</h3><p>独立于容器保存数据。容器删掉后，研究数据仍可保留。</p></article></section>
+
+<h2>3. 当前 Dockerfile 做了什么？</h2><p class="lead">项目的 <code>Dockerfile</code> 使用了<strong>多阶段构建</strong>：先用 Node 构建 React 前端，再用 Python 运行最终服务。</p><div class="flow"><div><strong>阶段一：frontend-build</strong><br>使用 <code>node:22-bookworm-slim</code>；复制 <code>frontend/package*.json</code>；执行 <code>npm ci</code>；执行 <code>npm run build</code>，产生静态前端文件。</div><div><strong>阶段二：runtime</strong><br>使用更轻的 <code>python:3.12-slim</code>；安装 <code>.[openai,web]</code>；复制 QuantLab Python 代码；把前端构建结果复制到 <code>frontend/dist</code>。</div><div><strong>生产环境变量</strong><br>设置 <code>QUANTLAB_ENV=production</code>、<code>QUANT_AGENT_WORKSPACE=/data</code>、SQLite 路径为 <code>/data/.quant-agent/quantlab.db</code>。</div><div><strong>安全运行用户</strong><br>创建 UID 为 10001 的 <code>quantlab</code> 用户，容器不使用 root 用户运行 API。</div><div><strong>启动 FastAPI</strong><br>容器启动命令是 <code>uvicorn quant_lab_agent.web.api:app --host 0.0.0.0 --port 8000</code>。</div></div>
+
+<h2>4. docker-compose.yml 做了什么？</h2><pre>services:
+  quantlab:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.production
+    volumes:
+      - quantlab-data:/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp</pre>
+<table class="table"><thead><tr><th>配置</th><th>含义</th><th>为什么需要</th></tr></thead><tbody><tr><td><code>build: .</code></td><td>根据当前目录 Dockerfile 构建镜像</td><td>把项目代码和依赖打包</td></tr><tr><td><code>8000:8000</code></td><td>宿主机 8000 映射到容器 8000</td><td>浏览器可访问 <code>localhost:8000</code></td></tr><tr><td><code>.env.production</code></td><td>把 Key、模型名、管理员配置传入容器</td><td>敏感配置不写死在镜像中</td></tr><tr><td><code>quantlab-data:/data</code></td><td>Docker 命名数据卷</td><td>保存 SQLite、Run、日志、上传数据和 Artifact</td></tr><tr><td><code>restart: unless-stopped</code></td><td>Docker 重启后自动恢复服务</td><td>适合长期本地或服务器运行</td></tr><tr><td><code>read_only: true</code></td><td>容器根文件系统默认只读</td><td>减少意外写入；只有 <code>/data</code> Volume 和 <code>/tmp</code> 可写</td></tr><tr><td><code>no-new-privileges</code></td><td>禁止进程获得额外系统权限</td><td>提供一层基础安全防护</td></tr></tbody></table>
+
+<h2>5. 数据实际在哪里？</h2><div class="diagram">浏览器 http://localhost:8000
+            │
+            ▼
+宿主机端口 8000
+            │
+            ▼
+Docker 容器中的 FastAPI :8000
+            │
+            ▼
+容器内 /data
+            │
+            ▼
+Docker Volume：quantlab-data
+  ├── .quant-agent/quantlab.db
+  ├── .quant-agent/runs/
+  ├── .quant-agent/uploads/
+  ├── .quant-agent/audit.jsonl
+  └── artifacts/</div><div class="warn"><strong>重要：</strong>Docker 模式中，数据默认不在代码目录的 <code>.quant-agent/</code>，而是在 Docker 的 <code>quantlab-data</code> Volume 中。因此直接复制 Git 仓库不会自动带走已有 Run、用户和上传数据。</div>
+
+<h2>6. 如何真正启动 Docker 版本？</h2><pre># 1. 进入项目目录
+cd /Users/yanxiaojing/code/QuantLab_Agent
+
+# 2. 创建生产配置
+cp .env.production.example .env.production
+
+# 3. 编辑 .env.production，填写 API Key、随机 Secret 和管理员密码
+# 4. 构建并后台启动
+docker compose up --build -d
+
+# 5. 查看服务状态
+docker compose ps
+
+# 6. 查看日志
+docker compose logs -f
+
+# 7. 浏览器打开
+# http://localhost:8000</pre>
+<h2>7. Docker 对“发给别人运行”有什么帮助？</h2><section class="grid"><article class="card"><span class="tag">方便</span><h3>环境一致</h3><p>对方不用自己处理 Python、Node、依赖版本和前端构建步骤。</p></article><article class="card"><span class="tag">方便</span><h3>启动一致</h3><p>只需 Docker Desktop、自己的 <code>.env.production</code> 和一条 Compose 命令。</p></article><article class="card"><span class="tag">仍需注意</span><h3>数据和密钥不自动共享</h3><p>对方必须使用自己的 API Key、Secret、管理员密码，并获得一个新的空数据 Volume。</p></article></section><div class="safe"><strong>适合你的项目：</strong>Docker 很适合面试演示、小团队内部部署和交付给其他开发者。它让“本地 Agent + FastAPI + React + SQLite + 数据卷”变成可复制的单机部署单元。</div>
+<h2>8. 面试时的一句话</h2><div class="safe">我使用多阶段 Docker 构建：Node 阶段构建 React，Python 阶段运行 FastAPI；运行数据通过独立 Docker Volume 持久化，敏感模型配置通过环境文件注入。这样项目可以在其他电脑上通过 Docker Compose 快速启动，同时把代码、密钥和研究数据分离管理。</div><!-- LATEST_RUNTIME_UPDATE:START --><style>
+.latest-runtime-update{margin:42px 0 24px;padding:24px 26px;border:1px solid #9bd8ad;border-radius:14px;background:linear-gradient(135deg,#f1fbf4,#f8fcf8);color:#193324}.latest-runtime-update h2{margin:0 0 10px;color:#123f25}.latest-runtime-update p,.latest-runtime-update li{line-height:1.75}.latest-runtime-update code{background:#e0f3e5;padding:2px 5px;border-radius:4px}.latest-runtime-update .release{font:700 11px ui-monospace,monospace;letter-spacing:.08em;color:#187042}.latest-runtime-update .flow{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0}.latest-runtime-update .flow span{padding:7px 9px;border-radius:7px;background:white;border:1px solid #cce6d2;font-size:13px}.latest-runtime-update .warn{padding:10px 12px;background:#fff7e8;border-left:3px solid #cf932c;border-radius:5px}</style><section class="latest-runtime-update"><h2>最新运行时能力：真实数据、受控策略与预测情景</h2><p class="release">CODE UPDATE · 2026-08-27</p><p>最新代码增加 <code>fetch_us_market_data</code>、<code>create_strategy_template</code> 与 <code>forecast_market_direction</code>。用户可输入 <code>英伟达</code>、<code>NVIDIA</code> 或 <code>NVDA</code>；LLM 决定下一步，但固定工具负责名称解析、市场数据快照、数据校验、策略编译、回测和预测诊断。</p><div class="flow"><span>自然语言任务</span><span>→ 行情快照</span><span>→ 数据校验</span><span>→ 策略 / 预测</span><span>→ 受限计算</span><span>→ 证据/治理</span></div><ul><li><code>tools/market_data.py</code>：经固定 Alpha Vantage 适配器获取 OHLCV，校验日期、必填字段、重复日期、价格高低关系和成交量；保存 CSV、lineage JSON、SHA-256。Key 不进入 LLM 上下文。</li><li><code>tools/strategy_template.py</code>：只允许 <code>buy_and_hold</code>、<code>moving_average</code>、<code>mean_reversion</code> 三种策略；校验窗口、z-score、成本和 CSV 列后，生成可审阅的策略规格与标准库脚本。</li><li><code>tools/forecast.py</code>：使用可解释的 AR(1) 历史收益率情景模型，输出上涨概率、统计区间，以及滚动样本外方向准确率和 Brier score；预测 Artifact 含数据 SHA-256 与限制说明。</li><li>策略脚本保存到 <code>backtests/generated/</code>，规则保存到 <code>.quant-agent/strategy-specs/</code>，回测和预测结果保存到 <code>artifacts/</code>；<code>run_backtest</code> 仍负责无 Shell 执行、超时、JSON Schema 与 SHA-256 校验。</li></ul><div class="warn">“分析近三年走势”不等于策略回测或预测。“上涨概率”只是历史模型产生的统计情景，不是必然价格、买卖建议或自动交易依据。复权、幸存者偏差、流动性和样本外验证仍需额外研究。</div></section><!-- LATEST_RUNTIME_UPDATE:END --><p class="footer">本文依据项目当前 <code>Dockerfile</code>、<code>docker-compose.yml</code> 和 <code>.env.production.example</code> 生成。</p></main></body></html>

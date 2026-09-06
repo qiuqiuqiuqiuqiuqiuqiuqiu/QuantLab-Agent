@@ -6,18 +6,23 @@ import json
 from time import perf_counter
 
 from .audit import AuditLog
-from .context import ContextManager
+from .context import ContextManager, estimate_tokens
 from .prompt import system_prompt
 
 
 class Agent:
     def __init__(
         self, llm, tools, workspace, audit_log, max_context_tokens=64_000,
-        max_rounds=30, max_backtest_retries=2,
+        max_rounds=30, max_backtest_retries=2, max_total_tokens=40_000,
+        max_completion_tokens=4_096, input_cost_per_million=0.0, output_cost_per_million=0.0,
     ):
         self.llm, self.tools, self.workspace = llm, tools, workspace
         self.messages, self.max_rounds = [], max_rounds
         self.max_backtest_retries = max_backtest_retries
+        self.max_total_tokens = max_total_tokens
+        self.max_completion_tokens = max_completion_tokens
+        self.input_cost_per_million = input_cost_per_million
+        self.output_cost_per_million = output_cost_per_million
         self.by_name = {tool.name: tool for tool in tools}
         self.audit, self.context = AuditLog(audit_log), ContextManager(max_context_tokens)
         self.system = system_prompt(workspace, tools)
@@ -27,8 +32,20 @@ class Agent:
         self.messages.append({"role": "user", "content": user_input})
         self.audit.record("user_request", content=user_input, run_id=run_id)
         backtest_attempts: dict[str, int] = {}
+        tool_cache: dict[str, str] = {}
+        total_prompt_tokens = total_completion_tokens = 0
         for round_number in range(1, self.max_rounds + 1):
-            self.context.maybe_compress(self.messages)
+            if self.context.maybe_compress(self.messages):
+                event = {"round": round_number, "estimated_tokens": estimate_tokens(self.messages)}
+                self.audit.record("context_compacted", **event, run_id=run_id)
+                if run_store and run_id:
+                    run_store.record_event(run_id, "context_compacted", event)
+            predicted_input = estimate_tokens([{"role": "system", "content": self.system}, *self.messages])
+            if total_prompt_tokens + total_completion_tokens + predicted_input + self.max_completion_tokens > self.max_total_tokens:
+                outcome = "[Stopped: insufficient token budget for another model call; human review required.]"
+                self._record_summary(run_store, run_id, round_number - 1, total_prompt_tokens, total_completion_tokens, "preflight_token_budget")
+                self.audit.record("agent_stopped", reason="preflight_token_budget", run_id=run_id)
+                return outcome
             started = perf_counter()
             response = self.llm.chat(
                 [{"role": "system", "content": self.system}, *self.messages],
@@ -41,18 +58,35 @@ class Agent:
                 "completion_tokens": response.completion_tokens,
                 "tool_call_count": len(response.tool_calls),
             }
+            total_prompt_tokens += response.prompt_tokens
+            total_completion_tokens += response.completion_tokens
+            llm_event["total_tokens"] = total_prompt_tokens + total_completion_tokens
+            llm_event["estimated_cost_usd"] = self._estimated_cost(total_prompt_tokens, total_completion_tokens)
             self.audit.record("llm_response", **llm_event, run_id=run_id)
             if run_store and run_id:
                 run_store.record_event(run_id, "llm_response", llm_event)
             self.messages.append(response.message)
+            if total_prompt_tokens + total_completion_tokens > self.max_total_tokens:
+                outcome = "[Stopped: token budget reached; human review required.]"
+                self._record_summary(run_store, run_id, round_number, total_prompt_tokens, total_completion_tokens, "token_budget")
+                self.audit.record("agent_stopped", reason="token_budget", run_id=run_id)
+                return outcome
             if not response.tool_calls:
                 self.audit.record("final_response", round=round_number, content=response.content, run_id=run_id)
                 if run_store and run_id:
                     run_store.record_event(run_id, "final_response", {"round": round_number, "content": response.content})
+                self._record_summary(run_store, run_id, round_number, total_prompt_tokens, total_completion_tokens, "final_response")
                 return response.content
             for call in response.tool_calls:
                 if on_tool:
                     on_tool(call.name, call.arguments)
+                fingerprint = self._tool_fingerprint(call.name, call.arguments)
+                tool = self.by_name.get(call.name)
+                if tool and tool.cacheable and fingerprint in tool_cache:
+                    result, elapsed_ms = tool_cache[fingerprint], 0.0
+                    self._record_tool_event(run_store, run_id, round_number, call, result, elapsed_ms, cache_hit=True)
+                    self.messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
+                    continue
                 if call.name == "run_backtest":
                     key = str(call.arguments.get("script_path", "<unknown>"))
                     backtest_attempts[key] = backtest_attempts.get(key, 0) + 1
@@ -70,16 +104,28 @@ class Agent:
                 else:
                     result, elapsed_ms = self._execute_timed(call.name, call.arguments)
                 self._record_tool_event(run_store, run_id, round_number, call, result, elapsed_ms)
+                if tool and tool.cacheable and not result.startswith("Error"):
+                    tool_cache[fingerprint] = result
                 self.messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
         outcome = "[Stopped: maximum tool rounds reached; human review required.]"
+        self._record_summary(run_store, run_id, self.max_rounds, total_prompt_tokens, total_completion_tokens, "max_rounds")
         self.audit.record("agent_stopped", reason="max_rounds", run_id=run_id)
         return outcome
 
-    def _record_tool_event(self, run_store, run_id, round_number, call, result, elapsed_ms) -> None:
+    def _record_summary(self, run_store, run_id, rounds, prompt_tokens, completion_tokens, outcome) -> None:
+        event = {"rounds": rounds, "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+                 "total_tokens": prompt_tokens + completion_tokens, "estimated_cost_usd": self._estimated_cost(prompt_tokens, completion_tokens), "outcome": outcome}
+        self.audit.record("agent_summary", **event, run_id=run_id)
+        if run_store and run_id:
+            run_store.record_event(run_id, "agent_summary", event)
+
+    def _record_tool_event(self, run_store, run_id, round_number, call, result, elapsed_ms, cache_hit=False) -> None:
         event = {
             "round": round_number, "tool": call.name, "arguments": call.arguments,
             "result": result, "latency_ms": elapsed_ms,
         }
+        if cache_hit:
+            event["cache_hit"] = True
         if call.name == "run_backtest":
             try:
                 payload = json.loads(result)
@@ -90,6 +136,13 @@ class Agent:
         self.audit.record("tool_call", **event, run_id=run_id)
         if run_store and run_id:
             run_store.record_event(run_id, "tool_call", event)
+
+    @staticmethod
+    def _tool_fingerprint(name, arguments) -> str:
+        return name + ":" + json.dumps(arguments, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+    def _estimated_cost(self, prompt_tokens, completion_tokens) -> float:
+        return round((prompt_tokens * self.input_cost_per_million + completion_tokens * self.output_cost_per_million) / 1_000_000, 8)
 
     def _execute_timed(self, name, arguments) -> tuple[str, float]:
         started = perf_counter()

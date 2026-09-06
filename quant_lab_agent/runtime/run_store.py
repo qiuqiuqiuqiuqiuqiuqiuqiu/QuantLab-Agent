@@ -48,6 +48,13 @@ class RunStore:
         self._write_manifest(run_id, manifest)
         self.record_event(run_id, "run_finished", {"status": status, "answer": answer})
 
+    def annotate(self, run_id: str, **metadata) -> None:
+        """Attach non-execution metadata such as a parent research project."""
+        manifest = self.load(run_id)
+        manifest.update(metadata)
+        manifest["updated_at"] = _now()
+        self._write_manifest(run_id, manifest)
+
     def record_event(self, run_id: str, event: str, data: dict) -> None:
         self._validate_id(run_id)
         path = self.root / run_id / "events.jsonl"

@@ -95,8 +95,42 @@ pytest -q
 | `read_workspace_file` / `replace_workspace_text` | 检查并以唯一锚点修复研究脚本 | 不能访问工作目录外的文件 |
 | `validate_research` | 校验缺失指标及回撤、换手率门槛 | 不批准部署 |
 | `request_approval` | 创建人工审批请求 | 不部署策略 |
+| `fetch_us_market_data` | 用受控数据商 API 将股票名称/代码解析为美股日线 OHLCV 快照，并保存数据血缘 | 不抓取任意网页、不泄露 API Key、不下单 |
+| `create_strategy_template` | 将 LLM 选择的白名单策略参数编译为可审计 Python 回测脚本与策略规格 JSON | 不接受任意 Python、任意指标公式或隐藏交易规则 |
+| `forecast_market_direction` | 基于已校验价格快照给出受限统计情景、概率区间与滚动样本外诊断 | 不承诺未来价格、不生成买卖建议、不自动交易 |
 
 Agent 有最大轮次；工具参数经函数签名校验；未知工具会被拒绝；工具调用和结果会写入审计日志。该项目没有任何下单、部署或绕过人工审批的能力。
+
+### 从自然语言到受控策略回测
+
+当用户**明确要求策略回测**时，LLM 可以根据问题选择一个策略模板并填写参数，而不是自由生成可执行代码：
+
+```text
+“测试 NVDA：10/30 周均线向上时持有，否则持有现金，单边成本 5bps”
+  → create_strategy_template(strategy_type="moving_average", fast_window=10, slow_window=30, ...)
+  → .quant-agent/strategy-specs/<research-id>.json       # 可审计规则
+  → backtests/generated/<research-id>.py                  # 由固定编译器产生的脚本
+  → run_backtest(...) → artifacts/<research-id>_strategy.json
+```
+
+当前白名单有 `buy_and_hold`、`moving_average` 和 `mean_reversion`。模板只使用历史时点可见的收盘价，并将信号延后一根 K 线执行，避免明显的未来函数；但这不等于完整的量化生产验证，仍需检查复权、幸存者偏差、流动性、滑点和样本外表现。
+
+### 预测模块：只输出可检验的概率情景
+
+当用户明确问“未来一周/一个月可能如何”时，Agent 可在获取真实快照后调用 <code>forecast_market_direction</code>。当前模型是一个可解释的、仅基于历史收益率的 AR(1)+正态波动情景模型：输出未来 N 个 bar 的预期收益、上涨概率、统计价格区间，并用滚动样本外方向准确率和 Brier score 说明历史诊断质量。每次结果写入 <code>artifacts/*_forecast.json</code> 并附 SHA-256。
+
+它不输出“必涨”“应该买入”，也不将预测结果视为通过治理或自动交易的依据。预测质量不足时，工具会返回 <code>low</code> 置信度或直接拒绝数据不足的请求。
+
+### 让 Agent 自动获取美股数据
+
+配置一次独立的市场数据 Key（不是 OpenRouter Key）：
+
+```bash
+export ALPHAVANTAGE_API_KEY="你的 Alpha Vantage Key"
+```
+
+之后直接说：`研究英伟达近三年的价格趋势，先取得真实日线数据并记录血缘。`
+Agent 会调用 `fetch_us_market_data`：先将“英伟达 / NVIDIA / NVDA”解析成可确认的美股代码，再从固定的 Alpha Vantage API 获取 OHLCV（默认周线，适合多年研究；也可请求日线），校验日期、重复行、缺失字段、异常价格和成交量，最后把 CSV、元数据和 SHA-256 保存到 `.quant-agent/market-data/`。模型只会看到脱敏后的数据摘要与保存路径，不会拿到 Key。日线可用历史长度取决于供应商套餐；需要多年完整日线时，应配置有相应权限的供应商套餐或导入已授权数据。
 
 ## 后续迭代路线（面试可讲）
 
@@ -179,3 +213,56 @@ docker compose up --build -d
 ```
 
 部署后访问 `http://localhost:8000`；容器会托管已经构建的前端。数据位于 Docker volume `quantlab-data`。这是一套单机生产基线；真实生产环境还应放在反向代理/TLS 后，并将回测脚本移入独立容器或任务队列，不能把不可信策略代码直接跑在 API 容器内。
+
+## Research OS upgrade
+
+QuantLab is organised around **Research Projects**, not one-off chat reports:
+
+```text
+Research Project (thesis + universe + benchmark)
+  └── Experiments (single-stock check / peer comparison / strategy baseline)
+        └── Run evidence (data lineage + protocol stages + tool trace + validated artifact)
+```
+
+The Web workspace now exposes a **Research projects** view. Create a project such
+as `AI Semiconductor Research`, define its thesis, universe and benchmark, then
+start multiple guided experiments from that project. Each experiment retains its
+`project_id`, allowing later matrix comparison rather than isolated reports.
+
+Guided templates deliberately use deterministic synthetic data only for product
+onboarding. Their data-origin warning is persisted in the event trace and UI.
+Replace this source with an uploaded or licensed vendor asset before interpreting
+any output as market research.
+
+The template protocol is persisted as stages:
+`Hypothesis → Data validation → Baseline/experiment → Robustness → Governance`.
+The current demo completes the deterministic stages and marks robustness and
+governance as requiring real data/review; it never upgrades a synthetic result to
+an investment recommendation.
+
+## Improved CLI workflow
+
+The CLI now supports both Agent-led natural-language research and direct, auditable local operations. It automatically reads the project `.env` file (shell variables still take precedence):
+
+```bash
+# First: see exactly what is configured, without exposing keys
+quantlab doctor
+
+# Download a validated market-data snapshot by company name or ticker
+quantlab data fetch NVIDIA --frequency weekly
+
+# Compile a reviewed strategy rule and run the resulting local script
+quantlab strategy create \
+  --id nvda-ma-v1 --ticker NVDA \
+  --data .quant-agent/market-data/alpha_vantage_NVDA_weekly_*.csv \
+  --type moving_average --fast 10 --slow 30 --cost 5 --run
+
+# Create an uncertainty-labelled statistical scenario (not investment advice)
+quantlab forecast --id nvda-2w-v1 --ticker NVDA \
+  --data .quant-agent/market-data/alpha_vantage_NVDA_weekly_*.csv --horizon 2
+
+# Or let the Agent plan a bounded evidence-first task
+quantlab run -p "Analyze NVIDIA over three years. Fetch real data first, then explain evidence and limitations."
+```
+
+All operational commands accept `--json` for scripting. Use `quantlab --help` or `quantlab <command> --help` for full options.

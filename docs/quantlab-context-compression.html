@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QuantLab Agent · 上下文压缩与成本控制</title>
+<style>
+:root{--ink:#17271e;--muted:#627267;--green:#12804c;--mint:#e8f8ed;--line:#d9e7dd;--paper:#f5f8f6;--amber:#a86411;--dark:#10261a}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}.wrap{max-width:1080px;margin:auto;padding:32px 24px 82px}.hero{padding:52px;border-radius:24px;color:#fff;background:radial-gradient(circle at 83% 20%,#3f9b71,transparent 25%),linear-gradient(135deg,#0e2819,#1e5d3f)}.hero h1{font-size:42px;line-height:1.2;margin:10px 0}.hero p{max-width:720px;color:#d3ebdb}.eyebrow{font:700 12px ui-monospace,monospace;letter-spacing:.12em;color:#71e6a7}.pill{display:inline-block;border:1px solid #65a987;border-radius:99px;padding:5px 10px;color:#c7f5d7;font-size:12px}h2{font-size:27px;line-height:1.35;margin:52px 0 12px}h3{font-size:18px;margin:2px 0 8px}.lead{color:var(--muted);font-size:17px;max-width:820px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card,.box{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px}.card p,.box p{margin:0;color:var(--muted)}.card b{display:block;font:700 12px ui-monospace,monospace;color:var(--green);margin-bottom:10px}.flow{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:center;margin:24px 0}.node{padding:13px 10px;text-align:center;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:13px;font-weight:700}.arrow{text-align:center;color:var(--green);font-size:21px}.code{background:var(--dark);color:#d7f6e2;border-radius:16px;padding:22px;overflow:auto;font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre}.table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}.table th,.table td{padding:13px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}.table th{background:#ecf7ef;font-size:13px}.table tr:last-child td{border:0}.tag{display:inline-block;border-radius:99px;padding:3px 8px;background:var(--mint);color:#167247;font:700 12px ui-monospace,monospace}.warn{margin:18px 0;padding:17px 19px;border-left:4px solid #d6922e;border-radius:0 12px 12px 0;background:#fff7e7;color:#674b1d}.ok{margin:18px 0;padding:17px 19px;border-left:4px solid #2a9a61;border-radius:0 12px 12px 0;background:#ecf9f0}.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}.case{border-top:1px solid var(--line);padding:20px 0}.case:first-child{border-top:0}.case aside{font:700 12px ui-monospace,monospace;color:var(--green);margin-bottom:7px}.quote{padding:24px 28px;border-radius:16px;background:#173f2a;color:#d8f2e1;font-size:18px}.footer{margin-top:52px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}@media(max-width:780px){.wrap{padding:16px}.hero{padding:32px 24px}.hero h1{font-size:34px}.grid,.two{grid-template-columns:1fr}.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.table{display:block;overflow-x:auto}}
+</style></head>
+<body><main class="wrap">
+<section class="hero"><div class="eyebrow">QUANTLAB AGENT · RUNTIME EXPLAINER</div><h1>上下文压缩<br>如何让 Agent 记住关键事实，又不被长输出拖垮？</h1><p>QuantLab 不会把每一次工具输出、报错和 CSV 内容无限塞给模型。它在每轮模型调用前检查上下文预算，并按“裁剪 → 压缩历史 → 最后保留近期消息”的三段式策略降载。</p><span class="pill">基于当前 <code>quant_lab_agent/context.py</code> 与 <code>agent.py</code></span></section>
+
+<h2>1. 为什么要压缩上下文？</h2><p class="lead">Agent 每调用一次工具，就会把工具结果作为下一轮模型的上下文。量化研究尤其容易产生长内容：CSV 摘要、回测净值曲线、Python traceback、数据质量报告和多轮策略修复记录。如果不控制，它会带来上下文超限、延迟上升、Token 成本膨胀，以及模型被旧错误干扰的问题。</p>
+<div class="grid"><article class="card"><b>PROBLEM 01</b><h3>工具输出很长</h3><p>一个失败回测的 stderr 或一份数据诊断，可能是数千到数万字符。</p></article><article class="card"><b>PROBLEM 02</b><h3>历史越跑越贵</h3><p>每轮都会重新发送此前消息；旧内容会在后续请求中重复计费。</p></article><article class="card"><b>PROBLEM 03</b><h3>关键证据会被淹没</h3><p>模型可能反复关注旧 traceback，而忘记最新数据路径、规则和失败原因。</p></article></div>
+
+<h2>2. 代码在什么时候触发压缩？</h2><pre class="code">for round_number in range(1, max_rounds + 1):
+    # 每一轮、调用 LLM 之前执行
+    if self.context.maybe_compress(self.messages):
+        audit.record("context_compacted", round=round_number, ...)
+
+    predicted_input = estimate_tokens(system + messages)
+    # 如果下一次调用已无足够总 Token 预算，直接停止
+    if spent + predicted_input + max_completion_tokens &gt; max_total_tokens:
+        stop_for_human_review()
+
+    response = llm.chat(system + messages, tool_schemas)</pre>
+<div class="flow"><div class="node">用户任务</div><div class="arrow">→</div><div class="node">工具执行</div><div class="arrow">→</div><div class="node">每轮压缩检查</div><div class="arrow">→</div><div class="node">模型下一步</div></div>
+<p><span class="tag">重点</span> 压缩发生在调用模型<strong>之前</strong>。因此它不仅是“超过窗口后的补救”，也是降低下一次请求成本的预防措施。</p>
+
+<h2>3. 当前三段式实现，逐行讲解</h2>
+<table class="table"><thead><tr><th>阶段</th><th>触发条件（默认 max_context=64,000）</th><th>当前做法</th><th>保留什么</th></tr></thead><tbody>
+<tr><td><strong>第一层：裁剪长工具输出</strong></td><td>估算上下文 &gt; 50%<br>约 32,000 tokens</td><td>所有 <code>role="tool"</code> 且内容超过 2,000 字符的消息，被改为“前 1,200 字符 + 标记 + 后 400 字符”。</td><td>通常前部有结果摘要，后部有异常尾部或最终状态。</td></tr>
+<tr><td><strong>第二层：压缩旧历史</strong></td><td>估算上下文 &gt; 70%<br>且消息数 &gt; 8</td><td>保留最近 6 条消息；更早消息逐条取角色和前 240 字符，拼成最多 5,000 字符的 <code>[Compressed history]</code>。</td><td>最近的计划、工具调用和结果仍保留；旧历史变成粗粒度摘要。</td></tr>
+<tr><td><strong>第三层：紧急折叠</strong></td><td>估算上下文 &gt; 90%<br>约 57,600 tokens</td><td>只保留最后 4 条消息。</td><td>优先保住当前任务的最近状态，牺牲更早的对话细节。</td></tr>
+</tbody></table>
+<pre class="code"># context.py 的核心逻辑（简化）
+if tokens &gt; max_tokens // 2:
+    trim_each_long_tool_output(head=1200, tail=400)
+
+if tokens &gt; max_tokens * 7 // 10 and len(messages) &gt; 8:
+    old, tail = messages[:-6], messages[-6:]
+    messages[:] = [compressed_history(old), acknowledged] + tail
+
+if tokens &gt; max_tokens * 9 // 10:
+    messages[:] = messages[-4:]</pre>
+
+<h2>4. 举一个真实任务例子</h2><p class="lead">用户要求：“获取 NVDA 数据，生成均线策略，回测失败后修复，并给出预测情景。”</p>
+<div class="two"><section class="box"><h3>压缩前</h3><ul><li>原始用户任务；</li><li>市场数据工具返回的 CSV 元数据；</li><li>策略规格 JSON；</li><li>第一次回测完整 stderr（8,000 字符）；</li><li>读取脚本的完整内容；</li><li>修复 diff；</li><li>第二次回测结果和预测结果。</li></ul><p>模型每一轮都带着全部内容，越来越慢、越来越贵。</p></section><section class="box"><h3>第一层裁剪后</h3><ul><li>长 stderr 只保留开头的错误类型；</li><li>再保留结尾的 traceback 行；</li><li>中间大量重复栈帧被替换为 <code>…[tool output trimmed]…</code>；</li><li>最近的策略参数和结果仍完整存在。</li></ul><p>模型通常仍足够判断：是缺文件、字段错误还是语法错误。</p></section></div>
+<div class="ok"><strong>审计不会因为压缩而丢失：</strong>工具完整结果会先写入 <code>audit.jsonl</code> 和对应 Run 的 <code>events.jsonl</code>；被裁剪的是“下一次送给 LLM 的工作记忆”，不是证据存档。</div>
+
+<h2>5. 开发中会遇到什么问题？如何处理？</h2>
+<section class="case"><aside>CASE 01 · 直接截断会丢失真正的错误行</aside><h3>问题</h3><p>如果只保留工具输出前 1,000 字符，Python traceback 最有价值的最后几行往往丢失。模型看不到异常类型、脚本行号和失败原因，只能猜。</p><h3>当前解决</h3><p>第一层同时保留<strong>前 1,200</strong>和<strong>后 400</strong>字符。开头通常有结果/状态，结尾通常有错误栈末端；中间重复内容不再占上下文。</p></section>
+<section class="case"><aside>CASE 02 · 只压缩工具结果，历史对话仍会无限增长</aside><h3>问题</h3><p>即使每份工具结果都不长，多轮“模型计划 → 工具结果 → 模型修正”仍然会积累大量消息。</p><h3>当前解决</h3><p>超过 70% 上下文预算时，将较早历史提炼成一个压缩历史块，只保留最近 6 条原始消息。这样优先保留刚刚发生的调用与最新结果。</p></section>
+<section class="case"><aside>CASE 03 · 压缩本身也可能消耗 Token</aside><h3>问题</h3><p>如果调用另一个 LLM 来总结历史，摘要调用本身会增加费用和失败点。</p><h3>当前解决</h3><p>当前 <code>ContextManager</code> 是纯本地、确定性的字符裁剪与提取式摘要，不会增加一次模型调用、不会泄露更多数据，也便于离线测试。</p></section>
+<section class="case"><aside>CASE 04 · 只限制上下文，仍可能花超总预算</aside><h3>问题</h3><p>单次上下文未超模型窗口，不代表整个 Run 不会累计消耗大量 Token。</p><h3>当前解决</h3><p>Agent 另有 <code>max_total_tokens</code> 预算。每次调用前会估算“已用 Token + 下一次输入 + 最大输出预留”；不足则不发起模型请求，进入人工复核。</p></section>
+
+<h2>6. 当前实现的局限：必须诚实说明</h2><div class="warn"><strong>当前不是语义级 RAG 摘要。</strong>第二层仅提取旧消息前 240 字符，可能遗漏一条消息后半部分的重要参数；模型工具调用中的结构化 <code>tool_calls</code> 也不会被完整浓缩为业务事实。紧急折叠只保留最后 4 条消息，可能丢失最初假设。完整审计仍在磁盘，但模型不会自动重新读取。</div>
+<table class="table"><thead><tr><th>当前实现</th><th>优点</th><th>生产级下一步</th></tr></thead><tbody><tr><td>字符数 ÷ 4 粗略估算 Token</td><td>无依赖、速度快、足够做防守性预算</td><td>按模型 provider tokenizer 精确计数，并留出 tool schema 开销</td></tr><tr><td>提取式旧历史摘要</td><td>确定性、不额外调用 LLM</td><td>将研究 ID、数据路径、策略参数、最近失败原因做结构化事实卡片</td></tr><tr><td>每个 Run 内存消息列表</td><td>实现简单</td><td>持久化 checkpoint、摘要版本和 step-level resume</td></tr><tr><td>工具输出统一裁剪</td><td>能快速降低长 traceback 成本</td><td>按工具类型制定摘要：保留指标、路径、哈希、错误码，丢弃噪声</td></tr></tbody></table>
+
+<h2>7. 面试时可以怎样总结？</h2><div class="quote">我把上下文看作一项有限预算，而不是无限聊天记录。QuantLab 在每轮模型调用前按三层策略处理：先裁剪异常长的工具输出，再把旧历史压缩为本地确定性的提取式摘要，最后在接近极限时只保留近期消息。同时，完整工具证据仍写入 JSONL 审计日志；上下文压缩影响的是模型工作记忆，不影响可追溯性。再配合最大轮次、总 Token 预算和回测重跑预算，Agent 才能在长任务中可控地停止。</div>
+<p class="footer">页面依据当前代码生成：<code>quant_lab_agent/context.py</code>、<code>quant_lab_agent/agent.py</code>。本文描述的是当前本地实现，不代表完整生产级上下文管理方案。</p>
+</main></body></html>

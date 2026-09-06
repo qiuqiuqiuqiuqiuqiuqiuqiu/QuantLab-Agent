@@ -22,6 +22,7 @@ class WorkspacePathMixin:
 
 class ReadWorkspaceFileTool(WorkspacePathMixin, Tool):
     name = "read_workspace_file"
+    cacheable = True
     description = "Read a UTF-8 text file inside the workspace. Use this to inspect a failed research script before repairing it."
     parameters = {
         "type": "object",
