@@ -30,9 +30,10 @@ class RunBacktestTool(WorkspacePathMixin, Tool):
         "required": ["script_path", "result_path"],
     }
 
-    def __init__(self, workspace: Path, default_timeout_seconds: int = 120):
+    def __init__(self, workspace: Path, default_timeout_seconds: int = 120, artifact_store=None):
         super().__init__(workspace)
         self.default_timeout_seconds = default_timeout_seconds
+        self.artifact_store = artifact_store
 
     def execute(self, script_path: str, result_path: str, timeout_seconds: int | None = None, environment: dict[str, str] | None = None) -> str:
         try:
@@ -94,11 +95,17 @@ class RunBacktestTool(WorkspacePathMixin, Tool):
         if isinstance(artifacts, str):
             return self._failure("invalid_result", artifacts, stdout=completed.stdout)
         artifact_sha256 = hashlib.sha256(result.read_bytes()).hexdigest()
-        return json.dumps({
+        artifact_ref = self.artifact_store.put_file(
+            result, artifact_type="backtest_result", created_by="run_backtest",
+        ) if self.artifact_store else None
+        response = {
             "status": "success", "script_path": script_path, "result_path": result_path,
             "metrics": metrics, "artifacts": artifacts, "artifact_sha256": artifact_sha256, "stdout": self._clip(completed.stdout),
             "next_action": "Use record_backtest to persist these metrics, then validate_research.",
-        }, ensure_ascii=False)
+        }
+        if artifact_ref:
+            response["artifact"] = artifact_ref.to_dict()
+        return json.dumps(response, ensure_ascii=False)
 
     def _failure(self, category: str, message: str, stdout=None, stderr=None) -> str:
         return json.dumps({

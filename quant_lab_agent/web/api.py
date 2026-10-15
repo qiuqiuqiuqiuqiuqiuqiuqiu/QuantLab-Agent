@@ -21,7 +21,7 @@ except ImportError as exc:  # pragma: no cover
     raise RuntimeError("Install web dependencies: pip install -e '.[web]'") from exc
 
 from ..config import Config
-from ..runtime import ProjectStore, RunStore
+from ..runtime import ArtifactStore, ProjectStore, RunStore
 from ..service import execute_run
 from ..tools.backtest import RunBacktestTool
 from .identity import IdentityStore, ROLE_ADMIN, ROLE_RESEARCHER, ROLE_REVIEWER, User
@@ -278,7 +278,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             "tickers": tickers, "warning": "Demonstration data only; replace with vendor or uploaded data for a real conclusion.",
         }]})
         started = time.perf_counter()
-        raw_result = RunBacktestTool(config.workspace).execute(
+        raw_result = RunBacktestTool(config.workspace, artifact_store=ArtifactStore(config.workspace)).execute(
             "backtests/template_research.py", str(result_path.relative_to(config.workspace)), 120,
             environment={"QUANTLAB_JOB_FILE": str(job_path), "QUANTLAB_RESULT_FILE": str(result_path)},
         )
@@ -343,7 +343,7 @@ def create_app(config: Config | None = None) -> FastAPI:
                 detail="Upload the provided index_history_COMP.csv file to this research run before starting the guided report.",
             )
         started = time.perf_counter()
-        raw_result = RunBacktestTool(config.workspace).execute(
+        raw_result = RunBacktestTool(config.workspace, artifact_store=ArtifactStore(config.workspace)).execute(
             "backtests/comp_index_trend.py", "artifacts/comp_index_trend.json", timeout_seconds=120,
         )
         latency_ms = round((time.perf_counter() - started) * 1000)

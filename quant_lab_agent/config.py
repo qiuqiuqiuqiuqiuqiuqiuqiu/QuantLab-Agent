@@ -41,6 +41,7 @@ class Config:
     max_backtest_retries: int = 2
     max_total_tokens: int = 40_000
     llm_max_retries: int = 3
+    multi_agent_enabled: bool = True
     input_cost_per_million: float = 0.0
     output_cost_per_million: float = 0.0
     market_data_provider: str = "alpha_vantage"
@@ -79,6 +80,7 @@ class Config:
             max_backtest_retries=int(os.getenv("QUANT_AGENT_MAX_BACKTEST_RETRIES", "2")),
             max_total_tokens=int(os.getenv("QUANT_AGENT_MAX_TOTAL_TOKENS", "40000")),
             llm_max_retries=int(os.getenv("QUANT_AGENT_LLM_MAX_RETRIES", "3")),
+            multi_agent_enabled=os.getenv("QUANTLAB_MULTI_AGENT", "true").strip().lower() not in {"0", "false", "no"},
             input_cost_per_million=float(os.getenv("QUANT_AGENT_INPUT_COST_PER_MILLION", "0")),
             output_cost_per_million=float(os.getenv("QUANT_AGENT_OUTPUT_COST_PER_MILLION", "0")),
             market_data_provider=os.getenv("QUANTLAB_MARKET_DATA_PROVIDER", "alpha_vantage").strip().lower(),

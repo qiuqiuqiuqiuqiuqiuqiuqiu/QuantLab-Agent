@@ -43,6 +43,10 @@ class CreateStrategyTemplateTool(WorkspacePathMixin, Tool):
     _research_id = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
     _ticker = re.compile(r"^[A-Za-z][A-Za-z.\-]{0,11}$")
 
+    def __init__(self, workspace: Path, artifact_store=None):
+        super().__init__(workspace)
+        self.artifact_store = artifact_store
+
     def execute(
         self, research_id: str, ticker: str, price_data_path: str, strategy_type: str,
         frequency: str = "weekly", transaction_cost_bps: float = 5.0,
@@ -95,12 +99,21 @@ class CreateStrategyTemplateTool(WorkspacePathMixin, Tool):
         result_path = artifact_dir / f"{research_id}_strategy.json"
         spec_path.write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
         script_path.write_text(self._render_runner(spec), encoding="utf-8")
+        artifact_refs = []
+        if self.artifact_store:
+            spec_ref = self.artifact_store.put_file(spec_path, artifact_type="strategy_spec", created_by="create_strategy_template")
+            script_ref = self.artifact_store.put_file(
+                script_path, artifact_type="backtest_script", created_by="create_strategy_template",
+                parent_ids=(spec_ref.artifact_id,),
+            )
+            artifact_refs = [spec_ref.to_dict(), script_ref.to_dict()]
         return json.dumps({
             "status": "success", "strategy_type": strategy_type, "ticker": ticker.upper(),
             "strategy_spec_path": str(spec_path.relative_to(self.workspace)),
             "script_path": str(script_path.relative_to(self.workspace)),
             "result_path": str(result_path.relative_to(self.workspace)),
             "rule_summary": self._rule_summary(spec),
+            "artifact_refs": artifact_refs,
             "next_action": "Call run_backtest with script_path and result_path. Then record_backtest and validate_research using the returned metrics.",
         }, ensure_ascii=False)
 

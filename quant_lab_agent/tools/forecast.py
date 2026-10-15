@@ -36,6 +36,10 @@ class ForecastMarketDirectionTool(WorkspacePathMixin, Tool):
         "additionalProperties": False,
     }
 
+    def __init__(self, workspace: Path, artifact_store=None):
+        super().__init__(workspace)
+        self.artifact_store = artifact_store
+
     def execute(self, forecast_id: str, ticker: str, price_data_path: str, horizon_bars: int = 1, frequency: str = "weekly") -> str:
         if not self._valid_id(forecast_id):
             raise ValueError("forecast_id must be lowercase letters, digits, underscores or hyphens (3-64 chars)")
@@ -78,9 +82,13 @@ class ForecastMarketDirectionTool(WorkspacePathMixin, Tool):
         artifact = artifact_dir / f"{forecast_id}_forecast.json"
         artifact.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         artifact_hash = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        artifact_ref = self.artifact_store.put_file(
+            artifact, artifact_type="forecast_result", created_by="forecast_market_direction",
+        ).to_dict() if self.artifact_store else None
         return json.dumps({
             "status": "success", "forecast_id": forecast_id, "ticker": ticker.upper(),
             "artifact_path": str(artifact.relative_to(self.workspace)), "artifact_sha256": artifact_hash,
+            "artifact": artifact_ref,
             "forecast": result["forecast"], "rolling_out_of_sample": diagnostics,
             "limitations": result["limitations"],
             "next_action": "Explain this as an uncertain statistical scenario. Do not make a buy/sell recommendation or mark research as deployment-approved.",

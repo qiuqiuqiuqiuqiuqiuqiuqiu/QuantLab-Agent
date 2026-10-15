@@ -55,11 +55,12 @@ class FetchUSMarketDataTool(WorkspacePathMixin, Tool):
         "特斯拉": "TSLA", "tesla": "TSLA", "meta": "META",
     }
 
-    def __init__(self, workspace: Path, api_key: str = "", provider: str = "alpha_vantage", opener=None):
+    def __init__(self, workspace: Path, api_key: str = "", provider: str = "alpha_vantage", opener=None, artifact_store=None):
         super().__init__(workspace)
         self.api_key = api_key
         self.provider = provider
         self._opener = opener or urlopen
+        self.artifact_store = artifact_store
 
     def execute(self, query: str, start_date: str | None = None, end_date: str | None = None, frequency: str = "weekly") -> str:
         if self.provider != "alpha_vantage":
@@ -201,10 +202,19 @@ class FetchUSMarketDataTool(WorkspacePathMixin, Tool):
         # Keep data lineage append-only and usable outside a single agent run.
         with (self.workspace / ".quant-agent" / "data_assets.jsonl").open("a", encoding="utf-8") as handle:
             handle.write(json.dumps({**metadata, "asset_type": "provider_market_data"}, ensure_ascii=False) + "\n")
+        artifact_refs = []
+        if self.artifact_store:
+            data_ref = self.artifact_store.put_file(csv_path, artifact_type="market_data", created_by="fetch_us_market_data")
+            lineage_ref = self.artifact_store.put_file(
+                meta_path, artifact_type="data_lineage", created_by="fetch_us_market_data",
+                parent_ids=(data_ref.artifact_id,),
+            )
+            artifact_refs = [data_ref.to_dict(), lineage_ref.to_dict()]
         return json.dumps({
             "status": "success", "provider": "alpha_vantage", "symbol": symbol, "company": match["name"],
             "frequency": frequency, "records": len(rows), "returned_date_range": [rows[0]["date"], rows[-1]["date"]],
             "csv_path": metadata["csv_path"], "lineage_path": str(meta_path.relative_to(self.workspace)), "sha256": digest,
             "validation": metadata["validation"],
+            "artifact_refs": artifact_refs,
             "warning": "Daily data is an evidence snapshot, not investment advice. Check provider licensing and history coverage before backtesting.",
         }, ensure_ascii=False)

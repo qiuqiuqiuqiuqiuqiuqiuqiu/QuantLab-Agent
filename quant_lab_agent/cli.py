@@ -7,11 +7,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .agent import Agent
 from .config import Config
-from .llm import LLM
 from .runtime import RunStore, archive_runs, rotate_audit_log
-from .service import terminal_status
+from .service import build_agent, terminal_status
 from .tools import default_tools
 
 
@@ -28,17 +26,6 @@ class UI:
     def warn(self, text: str) -> None: print(self._paint("33", f"! {text}"))
     def error(self, text: str) -> None: print(self._paint("31", f"✗ {text}"))
     def key(self, name: str, value: Any) -> None: print(f"  {self._paint('2', name + ':')} {value}")
-
-
-def _build_agent(config: Config) -> Agent:
-    if not config.api_key:
-        raise ValueError("Missing model key. Add OPENROUTER_API_KEY to .env or export it in your terminal.")
-    return Agent(
-        LLM(config.model, config.api_key, config.base_url, max_tokens=config.max_tokens, max_retries=config.llm_max_retries),
-        default_tools(config.workspace, config.market_data_api_key, config.market_data_provider), config.workspace, config.audit_log,
-        config.max_context_tokens, config.max_rounds, config.max_backtest_retries, config.max_total_tokens,
-        config.max_tokens, config.input_cost_per_million, config.output_cost_per_million,
-    )
 
 
 def _tools(config: Config) -> dict[str, Any]:
@@ -67,8 +54,10 @@ def _run(config: Config, prompt: str, ui: UI, resume_of: str | None = None) -> i
     ui.title("QuantLab research run")
     ui.key("run id", run_id); ui.key("task", prompt)
     try:
-        answer = _build_agent(config).chat(prompt, run_store=store, run_id=run_id)
-        status = terminal_status(answer); store.finish(run_id, answer, status)
+        agent = build_agent(config, run_store=store, run_id=run_id)
+        answer = agent.chat(prompt, run_store=store, run_id=run_id)
+        status = agent.last_decision.status if agent.last_decision else terminal_status(answer)
+        store.finish(run_id, answer, status)
     except Exception as exc:
         store.finish(run_id, f"Agent failed: {exc}", "failed")
         ui.error(str(exc)); return 1
